@@ -20,6 +20,8 @@ export const createResizer = (
   let rootElement: HTMLElement | undefined;
   const sizeKey = isHorizontal ? "width" : "height";
   const mountedIndexes = new WeakMap<Element, number>();
+  const pendingResizeRequests = new Map<Element, any>();
+  const alreadyResized = new Set<number>();
 
   // Initialize ResizeObserver lazily for SSR
   const getResizeObserver = once(() => {
@@ -45,7 +47,21 @@ export const createResizer = (
         } else {
           const index = mountedIndexes.get(target);
           if (exists(index)) {
-            resizes.push([index, contentRect[sizeKey]]);
+            if (alreadyResized.has(index)) {
+              if (pendingResizeRequests.has(target)) {
+                clearTimeout(pendingResizeRequests.get(target));
+              }
+
+              const request = setTimeout(() => {
+                pendingResizeRequests.delete(target);
+                store._update(ACTION_ITEM_RESIZE, [[index, contentRect[sizeKey]]]);
+              }, 10);
+
+              pendingResizeRequests.set(target, request);
+            } else {
+              resizes.push([index, contentRect[sizeKey]]);
+              alreadyResized.add(index);
+            }
           }
         }
       }
